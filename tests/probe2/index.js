@@ -6,6 +6,8 @@
 // 纪律不变：serial 监听器只观察，永远返回 undefined；异常全吞。
 
 import { appendFileSync, mkdirSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'devlog-probe2'
@@ -15,8 +17,9 @@ export const Config = z.object({
   logPrompt: z.string().default('你是开发日志生成器（probe2 占位默认值）。').volatile(),
 })
 
-const OUT_FILE = 'D:/dsh-devlog/tests/probe2/probe2-output.jsonl'
-try { mkdirSync('D:/dsh-devlog/tests/probe2', { recursive: true }) } catch {}
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const OUT_FILE = path.join(__dirname, 'probe2-output.jsonl')
+try { mkdirSync(__dirname, { recursive: true }) } catch {}
 
 function clip(v, n = 600) {
   if (v === undefined) return 'undefined'

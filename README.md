@@ -25,14 +25,15 @@ agent/turn-stopping → 切片过滤本轮事件 → 模型判断/生成 → 追
 
 ## 项目位置
 
-**`D:/dsh-devlog/`** —— 独立项目目录，代码、依赖、测试全在这里。
+本仓库（clone 后的目录）是独立项目目录，代码、依赖、测试全在这里。
 
-插件本身不在 `$DSH_HOME` 下，DSH 主目录只被读取、不被污染：挂载靠 `--patch D:/dsh-devlog/cordis.yml`（patch 层只是引用一个绝对路径，不往 DSH 里写东西）。
+插件本身不在 `$DSH_HOME` 下，DSH 主目录只被读取、不被污染：挂载靠 `--patch <仓库目录>/cordis.yml`（patch 层只是引用一个绝对路径，不往 DSH 里写东西）。
+注意：本仓库所有 `cordis.yml`（含 `tests/` 下的探针 patch）里 `name` 写的是绝对路径——这是 DSH patch 加载 ESM 插件的必需写法（相对目录会 `ERR_UNSUPPORTED_DIR_IMPORT`）。把仓库 clone 到别的机器后，需要把这些绝对路径改成你本机的插件目录，才能正常挂载。
 
 ## 目录结构
 
 ```
-D:/dsh-devlog/
+dsh-devlog/  （仓库根目录）
 ├── index.js          # 插件主逻辑（监听/切片过滤/生成/落盘）
 ├── cordis.yml        # patch 层，一行 insert（name 指向本项目 index.js）
 ├── package.json      # type: module
@@ -49,14 +50,14 @@ D:/dsh-devlog/
 ## 安装 / 本地挂载
 
 ```bash
-cd D:/dsh-devlog
+cd <仓库目录>
 npm install
 ```
 
-跑 DSH 时挂上：
+跑 DSH 时挂上（把路径换成你 clone 下来的仓库目录）：
 
 ```bash
-dsh --profile headless --patch D:/dsh-devlog/cordis.yml "<你的任务>"
+dsh --profile headless --patch <仓库目录>/cordis.yml "<你的任务>"
 ```
 
 或把 `cordis.yml` 里的 insert 行合并进 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 常驻。
@@ -64,31 +65,38 @@ dsh --profile headless --patch D:/dsh-devlog/cordis.yml "<你的任务>"
 重跑探测脚本（改插件 API 用法前值得先跑一遍确认形态）：
 
 ```bash
-dsh --profile headless --patch D:/dsh-devlog/tests/probe2/cordis.yml "回复：probe-ok"
+dsh --profile headless --patch <仓库目录>/tests/probe2/cordis.yml "回复：probe-ok"
 ```
 
 ## 输出目录
 
-默认是 `$DSH_HOME/devlog/`（即 `D:/DSH/devlog/`），符合"插件把产物写进 DSH 主目录"的语义。
+默认是 `$DSH_HOME/devlog/`（即 `~/.dsh/devlog`，DSH 默认家目录），符合"插件把产物写进 DSH 主目录"的语义。
 
-想让产物也离开 DSH 主目录，就在设置页填 `outputDir`（例如 `D:/dsh-devlog/devlog`）——留空则用默认。运行时日志和 debug dump 会跟着一起走。
+想让产物也离开 DSH 主目录，就在设置页填 `outputDir`（例如 `$DSH_HOME/devlog` 或任意你指定的绝对路径）——留空则用默认。运行时日志和 debug dump 会跟着一起走。
 
-## 设置页可编辑的提示词
+## 设置页可配置项
 
-系统提示词不写死在文件里。插件 Config 声明了一个 volatile 字符串字段：
+系统提示词不写死在文件里，模型与调试选项也都走 Config（均可在设置页改）：
 
 ```js
 Config: {
-  logPrompt: z.string().default(<prompts/system.md 内容>).volatile(),
-  blocking: z.boolean().default(true),
+  logPrompt: z.string().default(<prompts/system.md 内容>).volatile(),  // 系统提示词（volatile，可热改）
+  blocking: z.boolean().default(true),                  // 阻塞开关
+  provider: z.string().default('deepseek-official'),    // 生成模型 provider
+  model: z.string().default('deepseek-flash'),          // 生成模型名
+  reasoningEffort: z.string().default('low'),           // 思维链强度（low/high；flash 无 none）
+  debugDump: z.string().default('on-error'),            // 调试材料落盘：always / on-error / off
+  outputDir: z.string().default(''),                    // 日志目录；留空 = $DSH_HOME/devlog
 }
 ```
 
-- 在 DSH 设置页的插件卡片里编辑 `logPrompt`，保存后生效
-- 生成时用 `config.logPrompt.get()` 读当前值
-- 已知限制：host（cordis 4.0.2）不识别 volatile，改配置保存后会重启插件（新值生效，非无感热替换）
-
-`prompts/system.md` 的作用是这个字段的**初始默认值**：用户没改过就用文件内容，改过就用设置页的值。
+- `logPrompt`：在 DSH 设置页的插件卡片里编辑，保存后生效；生成时用 `config.logPrompt.get()` 读当前值。已知限制：host（cordis 4.0.2）不识别 volatile，改配置保存后会重启插件（新值生效，非无感热替换）。`prompts/system.md` 是这个字段的**初始默认值**。
+- `provider` / `model` / `reasoningEffort`：生成用的模型与思维链强度。默认 deepseek-flash + low，日志加工足够；换模型/档位按需改。
+- `debugDump`：调试材料（喂给模型的完整上下文 + 原始事件）落盘策略。
+  - `always`：每轮都写 `.devlog-context-debug.txt`（含你的代码/工具回显，**默认不开启**）
+  - `on-error`：仅生成失败/异常时写，便于排查（默认）
+  - `off`：从不写
+  - 文件落在日志目录下，不在意可定期删。
 
 ## blocking 开关
 

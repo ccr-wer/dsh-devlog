@@ -67,18 +67,25 @@ function readPrompt(file, fallback) {
 const DEFAULT_SYSTEM = readPrompt('system.md', FALLBACK_SYSTEM)
 const TASK_TEMPLATE = readPrompt('task.md', FALLBACK_TASK)
 
-// ---------- Config：设置页可编辑（volatile）+ 阻塞开关 ----------
+// ---------- Config：设置页可编辑（volatile）+ 阻塞开关 + 模型/调试 ----------
 
 export const Config = z.object({
+  // 系统提示词（volatile，设置页可热改；host 不识别 volatile 会重启生效）
   logPrompt: z.string().default(DEFAULT_SYSTEM).volatile(),
+  // 阻塞开关：true=等日志写完再关轮次；false=后台跑
   blocking: z.boolean().default(true),
-  // 生成模型的思维链强度：日志加工不需要深度推理，low 足够，
+  // 生成模型配置（日志加工不需要深度推理，low 足够）
   // 实测单轮生成 ~14s（low）vs ~22s（high）。注意：deepseek-flash
   // 的 efforts 白名单不含 none（传 none 会抛 UNSUPPORTED_REASONING_EFFORT，
   // 已实测），low 是能用的最低档。
-  effort: z.string().default('low'),
+  provider: z.string().default('deepseek-official'),
+  model: z.string().default('deepseek-flash'),
+  reasoningEffort: z.string().default('low'),
+  // 调试材料落盘：always=每轮写；on-error=仅生成失败/异常时写；off=从不写
+  // 默认 on-error：平时不落盘用户代码，出错时留材料便于排查
+  debugDump: z.string().default('on-error'),
   // 日志输出目录。留空 = $DSH_HOME/devlog（插件默认语义）。
-  // 想让产物也离开 DSH 主目录，就填绝对路径，例如 D:/dsh-devlog/devlog
+  // 想让产物也离开 DSH 主目录，就填绝对路径，例如 $DSH_HOME/devlog 或任意你指定的目录
   outputDir: z.string().default(''),
 })
 
@@ -258,8 +265,8 @@ function extractFileChanges(kept) {
   return out.join('\n')
 }
 
-// 调试用：把每次喂给模型的材料全文 + 原始事件结构落盘
-function dumpContext(text, kept) {
+// 调试用：把喂给模型的材料全文 + 原始事件结构落盘（受 debugDump 控制）
+function dumpContext(text, kept, errNote) {
   try {
     const dir = DEVLOG_DIR || path.join(dshHome(), 'devlog')
     mkdirSync(dir, { recursive: true })
@@ -271,7 +278,8 @@ function dumpContext(text, kept) {
         return '[' + ev.type + '] keys=' + JSON.stringify(Object.keys(ev || {})) + ' :: ' + peek
       }).join('\n')
     }
-    writeFileSync(path.join(dir, '.devlog-context-debug.txt'), text + raw)
+    const body = text + raw + (errNote ? '\n\n===== ERROR =====\n' + errNote : '')
+    writeFileSync(path.join(dir, '.devlog-context-debug.txt'), body)
   } catch {}
 }
 
@@ -335,7 +343,11 @@ async function generateDevlog(ctx, config, payload) {
   const existing = readExistingLog(dateStr)
   const { text: turnContext, resultClip } = buildTurnContext(kept, session, now)
   rtLog('materials turn=' + turn + ' events=' + kept.length + ' ctxLen=' + turnContext.length + ' resultClip=' + resultClip)
-  dumpContext(turnContext, kept)
+
+  // 调试材料落盘（受 debugDump 控制）：always=每轮写；off=从不；on-error=仅出错时（见下方 catch）
+  const debugDump = cfgVal(config.debugDump) || 'on-error'
+  if (debugDump === 'always') dumpContext(turnContext, kept)
+
   const task = TASK_TEMPLATE
     .replaceAll('{{date}}', dateStr)
     .replaceAll('{{existing_log_today}}', existing || '（今天还没有日志）')
@@ -345,36 +357,48 @@ async function generateDevlog(ctx, config, payload) {
 
   // ---- 第 4 段：调模型生成 ----
   const system = cfgVal(config.logPrompt) || DEFAULT_SYSTEM
-  const cfg = { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: cfgVal(config.effort) || undefined }
-  const prepared = await ctx.llm.prepareCall(cfg, payload.signal)
-  // 关键：options 必须带齐 prepared.config 全部字段（callConfigEquals 逐字段比对）
-  const stream = prepared.stream({
-    ...prepared.config,
-    system,
-    messages: [{ role: 'user', content: [{ type: 'text', text: task }] }],
-    signal: payload.signal,
-  })
-  let text = ''
-  for await (const chunk of stream) {
-    if (chunk.type === 'text-delta') text += chunk.text
+  const cfg = {
+    provider: cfgVal(config.provider) || 'deepseek-official',
+    model: cfgVal(config.model) || 'deepseek-flash',
+    reasoningEffort: cfgVal(config.reasoningEffort) || undefined,
   }
-  text = text.trim()
-  rtLog('generated turn=' + turn + ' date=' + dateStr + ' len=' + text.length)
+  try {
+    const prepared = await ctx.llm.prepareCall(cfg, payload.signal)
+    // 关键：options 必须带齐 prepared.config 全部字段（callConfigEquals 逐字段比对）
+    const stream = prepared.stream({
+      ...prepared.config,
+      system,
+      messages: [{ role: 'user', content: [{ type: 'text', text: task }] }],
+      signal: payload.signal,
+    })
+    let text = ''
+    for await (const chunk of stream) {
+      if (chunk.type === 'text-delta') text += chunk.text
+    }
+    text = text.trim()
+    rtLog('generated turn=' + turn + ' date=' + dateStr + ' len=' + text.length)
 
-  // 模型判断无实质内容 → 不写
-  if (!text || /^SKIP\b/.test(text)) {
-    rtLog('model-skip turn=' + turn)
-    return
+    // 模型判断无实质内容 → 不写
+    if (!text || /^SKIP\b/.test(text)) {
+      rtLog('model-skip turn=' + turn)
+      return
+    }
+
+    // ---- 落盘：追加到 <devlog 目录>/YYYY-MM-DD.md ----
+    const dir = DEVLOG_DIR || path.join(dshHome(), 'devlog')
+    mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, dateStr + '.md')
+    const isNew = !existsSync(file)
+    const body = (isNew ? '# ' + dateStr + '\n\n' : '') + text.replace(/\s+$/, '') + '\n\n'
+    appendFileSync(file, body)
+    rtLog('appended turn=' + turn + ' file=' + file + ' new=' + isNew)
+  } catch (e) {
+    // 生成/落盘失败：on-error 或 always 时把材料留盘便于排查
+    if (debugDump !== 'off') {
+      dumpContext(turnContext, kept, 'ERROR: ' + String((e && e.stack) || e))
+    }
+    throw e
   }
-
-  // ---- 落盘：追加到 <devlog 目录>/YYYY-MM-DD.md ----
-  const dir = DEVLOG_DIR || path.join(dshHome(), 'devlog')
-  mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, dateStr + '.md')
-  const isNew = !existsSync(file)
-  const body = (isNew ? '# ' + dateStr + '\n\n' : '') + text.replace(/\s+$/, '') + '\n\n'
-  appendFileSync(file, body)
-  rtLog('appended turn=' + turn + ' file=' + file + ' new=' + isNew)
 }
 
 // ---------- 事件缓冲 ----------

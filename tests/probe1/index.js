@@ -13,11 +13,14 @@
 //   - 一切异常吞掉，绝不影响轮次正常关闭。
 
 import { appendFileSync, mkdirSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const name = 'devlog-probe'
 
-const OUT_DIR = 'D:/dsh-devlog/tests/probe1'
-const OUT_FILE = OUT_DIR + '/probe-output.jsonl'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const OUT_DIR = __dirname
+const OUT_FILE = path.join(OUT_DIR, 'probe-output.jsonl')
 
 try { mkdirSync(OUT_DIR, { recursive: true }) } catch {}
 
