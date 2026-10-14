@@ -51,7 +51,10 @@ dsh-devlog/  （仓库根目录）
 
 ```bash
 cd <仓库目录>
-npm install
+npm install          # 装本地依赖（开发用）
+
+# 作为 DSH 插件安装（已发布到 npm）：
+npm install dsh-devlog-auto
 ```
 
 跑 DSH 时挂上（把路径换成你 clone 下来的仓库目录）：
