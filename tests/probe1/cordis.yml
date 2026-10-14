@@ -1,0 +1,4 @@
+# devlog-probe 临时补丁层：把探测插件插进 profile 树
+- insert:
+    - id: devlog-probe
+      name: 'D:/dsh-devlog/tests/probe1/index.js'

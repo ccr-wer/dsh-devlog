@@ -1,0 +1,10 @@
+{
+  "name": "dsh-devlog-probe2",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Probe 2: prepareCall return shape, user/message source fields, volatile config",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4"
+  }
+}

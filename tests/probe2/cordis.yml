@@ -1,0 +1,4 @@
+# devlog-probe2 临时补丁层
+- insert:
+    - id: devlog-probe2
+      name: 'D:/dsh-devlog/tests/probe2/index.js'

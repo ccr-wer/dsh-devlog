@@ -1,0 +1,17 @@
+node_modules/
+package-lock.json
+
+# 产物输出目录（默认不在这里，落在 $DSH_HOME/devlog；若改了 outputDir 会生成在这）
+devlog/
+*.log
+.devlog-runtime.log
+.devlog-context-debug.txt
+
+# 探测 output
+tests/probe1/probe-output.jsonl
+tests/probe2/probe2-output.jsonl
+tests/probe1/*.jsonl
+tests/probe2/*.jsonl
+
+.DS_Store
+.env

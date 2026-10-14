@@ -1,0 +1,7 @@
+{
+  "name": "dsh-devlog-probe",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Temporary probe: dump agent/turn-stopping payload for the devlog plugin"
+}

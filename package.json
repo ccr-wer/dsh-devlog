@@ -1,0 +1,11 @@
+{
+  "name": "dsh-devlog",
+  "version": "0.1.0",
+  "description": "DSH plugin: auto-write a dev log at agent/turn-stopping (context + memory -> first-person log)",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.4"
+  }
+}
