@@ -1,0 +1,6 @@
+# dsh bundle patch：把本插件声明进 DSH 生态的组合层。
+# name 用包名（而非绝对路径）——插件管理器按包名安装后可直接解析，
+# 无需使用者把仓库 clone 到某台机器的特定目录。
+- insert:
+    - id: devlog
+      name: dsh-devlog-auto

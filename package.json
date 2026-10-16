@@ -4,6 +4,10 @@
   "description": "DSH (DeepSeek Harness) plugin: auto-write a first-person dev log at agent/turn-stopping. Turns context + memory into a narrative log for the developer's own review.",
   "type": "module",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
   "license": "MIT",
   "keywords": [
     "dsh",
@@ -14,6 +18,14 @@
     "developer-log",
     "agent"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ccr-wer/dsh-devlog-auto.git"
@@ -21,11 +33,15 @@
   "author": "ccr-wer",
   "files": [
     "index.js",
-    "cordis.yml",
+    "cordis.patch.yml",
     "prompts/",
     "README.md"
   ],
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.4"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.5-rc.1 || ^0.2.0-rc.2"
   }
 }
