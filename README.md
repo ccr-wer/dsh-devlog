@@ -27,15 +27,16 @@ agent/turn-stopping → 切片过滤本轮事件 → 模型判断/生成 → 追
 
 本仓库（clone 后的目录）是独立项目目录，代码、依赖、测试全在这里。
 
-插件本身不在 `$DSH_HOME` 下，DSH 主目录只被读取、不被污染：挂载靠 `--patch <仓库目录>/cordis.yml`（patch 层只是引用一个绝对路径，不往 DSH 里写东西）。
-注意：本仓库所有 `cordis.yml`（含 `tests/` 下的探针 patch）里 `name` 写的是绝对路径——这是 DSH patch 加载 ESM 插件的必需写法（相对目录会 `ERR_UNSUPPORTED_DIR_IMPORT`）。把仓库 clone 到别的机器后，需要把这些绝对路径改成你本机的插件目录，才能正常挂载。
+插件本身不在 `$DSH_HOME` 下，DSH 主目录只被读取、不被污染：挂载靠 `--patch <仓库目录>/cordis.patch.yml`。
+
+注意：主 `cordis.patch.yml` 里 `name` 用的是**包名** `dsh-devlog-auto`（不是绝对路径），因此通过 `dsh plugin add dsh-devlog-auto` 或桌面端插件管理器安装后可直接解析，跨机器无需改路径。只有 `tests/` 下的两个探针 patch 仍写绝对路径——它们是本地开发工具，不随 npm 包发布（见 `files` 字段），clone 到别的机器重跑探针时才需要改。
 
 ## 目录结构
 
 ```
 dsh-devlog/  （仓库根目录）
 ├── index.js          # 插件主逻辑（监听/切片过滤/生成/落盘）
-├── cordis.yml        # patch 层，一行 insert（name 指向本项目 index.js）
+├── cordis.patch.yml  # patch 层，一行 insert（name 为包名 dsh-devlog-auto）
 ├── package.json      # type: module
 ├── node_modules/     # 依赖：schemastery 3.18.4（volatile 字段必需）
 ├── prompts/
@@ -60,10 +61,18 @@ npm install dsh-devlog-auto
 跑 DSH 时挂上（把路径换成你 clone 下来的仓库目录）：
 
 ```bash
-dsh --profile headless --patch <仓库目录>/cordis.yml "<你的任务>"
+dsh --profile headless --patch <仓库目录>/cordis.patch.yml "<你的任务>"
 ```
 
-或把 `cordis.yml` 里的 insert 行合并进 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 常驻。
+或把 `cordis.patch.yml` 里的 insert 行合并进 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 常驻。
+
+## 依赖说明：为什么 schemastery 是硬依赖
+
+`@deepseek-ai/schemastery` 被**固定锁死为 `3.18.4` 的 `dependencies`**，而没有按生态惯例放进 `peerDependencies`，原因是：
+
+设置页可编辑的 `logPrompt` 依赖 schemastery 的 `.volatile()`（3.18.4 才提供），而 DSH 宿主内置的是 3.18.2，没有 volatile。若改成 peer 依赖并回落到宿主版本，`logPrompt` 会退化成普通字符串——默认值仍在（日志照样生成），但**设置页编辑能力会丢失**。
+
+所以这里刻意保留硬依赖。代价是与"由宿主统一提供 schemastery"的生态惯例不一致，安装时 pnpm 可能打出 peer warnings，属预期行为，不影响运行。
 
 重跑探测脚本（改插件 API 用法前值得先跑一遍确认形态）：
 
