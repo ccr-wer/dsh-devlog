@@ -1,6 +1,6 @@
 {
   "name": "dsh-devlog-auto",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH (DeepSeek Harness) plugin: auto-write a first-person dev log at agent/turn-stopping. Turns context + memory into a narrative log for the developer's own review.",
   "type": "module",
   "main": "index.js",
